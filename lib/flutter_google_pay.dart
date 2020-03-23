@@ -9,10 +9,6 @@ class FlutterGooglePay {
   static const MethodChannel _channel =
       const MethodChannel("flutter_google_pay");
 
-  static Future<Result> makePayment(PaymentItem data) async {
-    return _call("request_payment", data.toMap());
-  }
-
   static Future<Result> makeCustomPayment(Map data) async {
     return _call("request_payment_custom_payment", data);
   }
@@ -31,13 +27,26 @@ class FlutterGooglePay {
     return Result('unknow', null, ResultStatus.UNKNOWN, "");
   }
 
-  static Future<bool> isAvailable(String environment) async {
+ static Future<bool> isAvailable(String environment) async {
     if (!Platform.isAndroid) {
       return false;
     }
     try {
+      Map request = {
+        "apiVersion": 2,
+        "apiVersionMinor": 0,
+        "allowedPaymentMethods": [
+          {
+            "type": "CARD",
+            "parameters": {
+              "allowedAuthMethods": ["PAN_ONLY", "CRYPTOGRAM_3DS"],
+              "allowedCardNetworks": ["MASTERCARD", "VISA"]
+            }
+          }
+        ]
+      };
       Map map = await _channel
-          .invokeMethod("is_available", {"environment": environment});
+          .invokeMethod("is_available", {"environment": environment, "request": request});
       return map['isAvailable'];
     } catch (error) {
       return false;
@@ -87,37 +96,14 @@ class FlutterGooglePay {
   }
 }
 
-class PaymentItem {
-  String currencyCode;
-  String amount;
-  String gateway;
-  String stripeToken;
-  String stripeVersion;
+enum PaymentNetwork {
+  VISA,
+  MASTERCARD
+}
 
-  PaymentItem(
-      {@required this.currencyCode,
-      @required this.amount,
-      @required this.gateway,
-      @required this.stripeToken,
-      @required this.stripeVersion});
-
-  Map toMap() {
-    Map args = Map();
-    args["amount"] = amount;
-    args["currencyCode"] = currencyCode;
-    if (!_validateAmount(amount)) {
-      throw Exception("Wrong amount: ${amount ?? "unknow"}");
-    }
-    if (!_validateCurrencyCode(currencyCode)) {
-      throw Exception("Wrong currency code: ${currencyCode ?? "unknow"}");
-    }
-
-    args["gateway"] = gateway;
-    args["stripeToken"] = stripeToken;
-    args["stripeVersion"] = stripeVersion;
-
-    return args;
-  }
+enum AuthMethod {
+  PAN_ONLY,
+  CRYPTOGRAM_3DS
 }
 
 enum ResultStatus {
@@ -149,15 +135,11 @@ bool _validateCurrencyCode(dynamic currencyCode) {
   if (!isNotEmpty) {
     return false;
   }
-
-//  String lowerCaseCode = currencyCode.toString().toLowerCase();
-  //TODO currency check
   return true;
 }
 
 class PaymentBuilder {
   Map<String, dynamic> _gatewayTokenizationSpecification;
-  Map<String, dynamic> _directTokenizationSpecification;
   Map<String, dynamic> _transactionInfo;
   Map<String, dynamic> _merchantInfo;
   List<String> _allowedCardNetworks;
@@ -202,10 +184,6 @@ class PaymentBuilder {
   ///   * by a supported gateway after payer authorization.
   ///   *
   addGateway([String gateway, String gatewayMerchantId]) {
-    if (_directTokenizationSpecification != null) {
-      throw Exception(
-          "You already set a DIRRECT. You can use DIRECT or Gateway.");
-    }
     Map gateway = Map();
     gateway["gateway"] = gateway;
     if (!isEmpty(gatewayMerchantId)) {
@@ -217,36 +195,13 @@ class PaymentBuilder {
     };
   }
 
-  /// {@code DIRECT} Integration: Decrypt a response directly on your servers. This configuration has
-  /// additional data security requirements from Google and additional PCI DSS compliance complexity.
-  ///
-  /// <p>Please refer to the documentation for more information about {@code DIRECT} integration. The
-  /// type of integration you use depends on your payment processor.
-  addDirectTokenizationSpecification(String directTokenizationPublikKey,
-      {String protocolVersion = "ECv2"}) {
-    if (_gatewayTokenizationSpecification != null) {
-      throw Exception(
-          "You already set a gateway. You can use DIRECT or Gateway.");
-    }
-    if (isEmpty(directTokenizationPublikKey)) {
-      throw Exception("Please add protocol version & public key.");
-    }
-    Map directTokenizationParameters = {
-      "protocolVersion": protocolVersion,
-      "publicKey": directTokenizationPublikKey
-    };
-    _directTokenizationSpecification = {
-      "type": "DIRECT",
-      "parameters": directTokenizationParameters
-    };
-  }
-
-  /// Provide Google Pay API with a payment amount, currency, and amount status.
-  addTransactionInfo(String price, String currencyCode) {
+   /// Provide Google Pay API with a payment amount, currency, and amount status.
+  addTransactionInfo(String price, String currencyCode, String countryCode) {
     _transactionInfo = {
       "totalPrice": price,
       "totalPriceStatus": "FINAL",
       "currencyCode": currencyCode,
+      "countryCode": countryCode
     };
   }
 
@@ -257,9 +212,6 @@ class PaymentBuilder {
 
   /// Card networks supported by your app and your gateway.
   /// Card networks:
-  ///    "AMEX",
-  ///    "DISCOVER",
-  ///    "JCB",
   ///    "MASTERCARD",
   ///    "VISA"
   addAllowedCardNetworks(List<String> allowedCardNetworks) {
@@ -346,10 +298,8 @@ class PaymentBuilder {
   /// @return A CARD PaymentMethod describing accepted cards and optional fields.
   Map get _cardPaymentMethod {
     Map cardPaymentMethod = _baseCardPaymentMethod;
-    if (_gatewayTokenizationSpecification != null ||
-        _directTokenizationSpecification != null) {
-      cardPaymentMethod["tokenizationSpecification"] =
-          _gatewayTokenizationSpecification ?? _directTokenizationSpecification;
+    if (_gatewayTokenizationSpecification != null ) {
+      cardPaymentMethod["tokenizationSpecification"] = _gatewayTokenizationSpecification;
     }
     return cardPaymentMethod;
   }
