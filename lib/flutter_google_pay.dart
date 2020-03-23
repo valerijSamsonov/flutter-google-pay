@@ -27,11 +27,12 @@ class FlutterGooglePay {
     return Result('unknow', null, ResultStatus.UNKNOWN, "");
   }
 
- static Future<bool> isAvailable(String environment) async {
+  static Future<bool> isAvailable(String environment) async {
     if (!Platform.isAndroid) {
       return false;
     }
     try {
+
       Map request = {
         "apiVersion": 2,
         "apiVersionMinor": 0,
@@ -40,11 +41,12 @@ class FlutterGooglePay {
             "type": "CARD",
             "parameters": {
               "allowedAuthMethods": ["PAN_ONLY", "CRYPTOGRAM_3DS"],
-              "allowedCardNetworks": ["MASTERCARD", "VISA"]
+              "allowedCardNetworks": ["AMEX", "MASTERCARD", "VISA"]
             }
           }
         ]
       };
+
       Map map = await _channel
           .invokeMethod("is_available", {"environment": environment, "request": request});
       return map['isAvailable'];
@@ -96,16 +98,6 @@ class FlutterGooglePay {
   }
 }
 
-enum PaymentNetwork {
-  VISA,
-  MASTERCARD
-}
-
-enum AuthMethod {
-  PAN_ONLY,
-  CRYPTOGRAM_3DS
-}
-
 enum ResultStatus {
   SUCCESS,
   ERROR,
@@ -126,18 +118,6 @@ class Result {
   Result(this.error, this.data, this.status, this.description);
 }
 
-bool _validateAmount(dynamic amount) {
-  return (amount?.toString() ?? "").length > 0 ?? false;
-}
-
-bool _validateCurrencyCode(dynamic currencyCode) {
-  bool isNotEmpty = (currencyCode?.toString() ?? "").length > 0 ?? false;
-  if (!isNotEmpty) {
-    return false;
-  }
-  return true;
-}
-
 class PaymentBuilder {
   Map<String, dynamic> _gatewayTokenizationSpecification;
   Map<String, dynamic> _transactionInfo;
@@ -148,6 +128,7 @@ class PaymentBuilder {
   bool _billingAddressRequired;
   bool _shippingAddressRequired;
   bool _phoneNumberRequred;
+
 
   /// An object describing information requested in a Google Pay payment sheet
   ///
@@ -172,8 +153,7 @@ class PaymentBuilder {
     if (_shippingSupportedCountries != null) {
       List allowedCountryCodes = _shippingSupportedCountries;
       shippingAddressParameters["allowedCountryCodes"] = allowedCountryCodes;
-      paymentDataRequest["shippingAddressParameters"] =
-          shippingAddressParameters;
+      paymentDataRequest["shippingAddressParameters"] = shippingAddressParameters;
     }
     return paymentDataRequest;
   }
@@ -183,19 +163,33 @@ class PaymentBuilder {
   ///   * <p>The Google Pay API response will return an encrypted payment method capable of being charged
   ///   * by a supported gateway after payer authorization.
   ///   *
-  addGateway([String gateway, String gatewayMerchantId]) {
-    Map gateway = Map();
-    gateway["gateway"] = gateway;
+  addGateway(String gateway, {String gatewayMerchantId}) {
+
+    Map params = Map();
+    params["gateway"] = gateway;
+
     if (!isEmpty(gatewayMerchantId)) {
-      gateway["gatewayMerchantId"] = gatewayMerchantId;
+      params["gatewayMerchantId"] = gatewayMerchantId;
     }
     _gatewayTokenizationSpecification = {
       "type": "PAYMENT_GATEWAY",
-      "parameters": gateway
+      "parameters": params
     };
   }
 
-   /// Provide Google Pay API with a payment amount, currency, and amount status.
+  addGatewayParams(Map<String, String> gatewayParam) {
+    Map<String, String> params = {};
+    gatewayParam.forEach((k, v) {
+      params.addAll({k: v});
+    });
+
+    _gatewayTokenizationSpecification = {
+      "type": "PAYMENT_GATEWAY",
+      "parameters": params
+    };
+  }
+
+  /// Provide Google Pay API with a payment amount, currency, and amount status.
   addTransactionInfo(String price, String currencyCode, String countryCode) {
     _transactionInfo = {
       "totalPrice": price,
@@ -212,11 +206,14 @@ class PaymentBuilder {
 
   /// Card networks supported by your app and your gateway.
   /// Card networks:
+  ///    "AMEX",
+  ///    "DISCOVER",
+  ///    "JCB",
   ///    "MASTERCARD",
   ///    "VISA"
-  addAllowedCardNetworks(List<String> allowedCardNetworks) {
+  addAllowedCardNetworks(List<PaymentNetwork> allowedCardNetworks) {
     if (allowedCardNetworks != null && allowedCardNetworks.length > 0) {
-      _allowedCardNetworks = allowedCardNetworks;
+      _allowedCardNetworks = allowedCardNetworks.map((item) => item.toString().split('.')[1]).toList();
     }
   }
 
@@ -227,9 +224,9 @@ class PaymentBuilder {
   ///
   /// The Google Pay API may return cards on file on Google.com (PAN_ONLY) and/or a device token on
   /// an Android device authenticated with a 3-D Secure cryptogram (CRYPTOGRAM_3DS).
-  addAllowedCardAuthMethods(List<String> allowedCardAuthMethods) {
+  addAllowedCardAuthMethods(List<AuthMethod> allowedCardAuthMethods) {
     if (allowedCardAuthMethods != null && allowedCardAuthMethods.length > 0) {
-      _allowedCardAuthMethods = allowedCardAuthMethods;
+      _allowedCardAuthMethods = allowedCardAuthMethods.map((item) => item.toString().split('.')[1]).toList();;
     }
   }
 
@@ -281,14 +278,16 @@ class PaymentBuilder {
     if (_allowedCardAuthMethods == null) {
       throw Exception("Please provide information about card auth methods");
     }
+    print('ready');
+    if (_billingAddressRequired != null && _billingAddressRequired) {
+      print('not NULL');
+      parameters["billingAddressRequired"] = _billingAddressRequired;
+      Map billingAddressParameters = Map();
+      billingAddressParameters["format"] = "FULL";
+      parameters["billingAddressParameters"] = billingAddressParameters;
+    }
     parameters["allowedAuthMethods"] = _allowedCardAuthMethods;
     parameters["allowedCardNetworks"] = _allowedCardNetworks;
-    if (_billingAddressRequired != null) {
-      parameters["billingAddressRequired"] = _billingAddressRequired;
-    }
-    Map billingAddressParameters = Map();
-    billingAddressParameters["format"] = "FULL";
-    parameters["billingAddressParameters"] = billingAddressParameters;
     cardPaymentMethod["parameters"] = parameters;
     return cardPaymentMethod;
   }
@@ -298,13 +297,25 @@ class PaymentBuilder {
   /// @return A CARD PaymentMethod describing accepted cards and optional fields.
   Map get _cardPaymentMethod {
     Map cardPaymentMethod = _baseCardPaymentMethod;
-    if (_gatewayTokenizationSpecification != null ) {
-      cardPaymentMethod["tokenizationSpecification"] = _gatewayTokenizationSpecification;
-    }
+ 
+      cardPaymentMethod["tokenizationSpecification"] =
+          _gatewayTokenizationSpecification ;
+    
     return cardPaymentMethod;
   }
 }
 
 bool isEmpty(String value) {
   return value == null || value.length == 0;
+}
+
+enum PaymentNetwork {
+  VISA,
+  MASTERCARD,
+  AMEX
+}
+
+enum AuthMethod {
+  PAN_ONLY,
+  CRYPTOGRAM_3DS
 }
