@@ -115,7 +115,7 @@ public class FlutterGooglePayPlugin implements MethodCallHandler, PluginRegistry
         data.put("status", paymentInfo != null ? "SUCCESS" : "UNKNOWN");
         if (paymentInfo != null) {
             data.put("result", paymentInfo);
-            data.put("ptoken", paymentData.getPaymentMethodToken().getToken());
+
         }
         mLastResult.success(data);
     }
