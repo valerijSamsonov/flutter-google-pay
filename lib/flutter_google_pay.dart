@@ -19,12 +19,12 @@ class FlutterGooglePay {
       return _parseResult(data);
     }).catchError((dynamic error) {
       return Result(error?.toString() ?? 'unknow error', null,
-          ResultStatus.ERROR, (error?.toString()) ?? "");
+          ResultStatus.ERROR, (error?.toString()) ?? "","");
     });
     if (result != null) {
       return result;
     }
-    return Result('unknow', null, ResultStatus.UNKNOWN, "");
+    return Result('unknow', null, ResultStatus.UNKNOWN, "","");
   }
 
   static Future<bool> isAvailable(String environment) async {
