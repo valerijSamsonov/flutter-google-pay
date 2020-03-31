@@ -59,6 +59,7 @@ class FlutterGooglePay {
     var error = map['error'];
     var status = map['status'];
     var result = map['result'];
+       var ptoken = map['ptoken'];
     var description = map["description"];
     if (result != null) {
       result = json.decode(result);
@@ -73,7 +74,7 @@ class FlutterGooglePay {
     } else {
       resultStatus = ResultStatus.UNKNOWN;
     }
-    return Result(error, result, resultStatus, description);
+    return Result(error, result, resultStatus, description, ptoken);
   }
 
   static ResultStatus parseStatus(String status) {
@@ -114,8 +115,9 @@ class Result {
   String description;
   Map data;
   ResultStatus status;
+  String ptoken;
 
-  Result(this.error, this.data, this.status, this.description);
+  Result(this.error, this.data, this.status, this.description, this.ptoken);
 }
 
 class PaymentBuilder {
